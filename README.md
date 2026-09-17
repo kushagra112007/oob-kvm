@@ -1,10 +1,14 @@
 # Zero-Cloud Out-of-Band (OOB) Laptop KVM & Power Node
 
 
-> **45-Second Demo Video:** 
+> **45-Second Demo Video:**
 
 
-https://github.com/user-attachments/assets/e6dacda2-8d32-48b7-a407-9e057e0ee7ed
+
+https://github.com/user-attachments/assets/9a236c90-bcca-4cf3-b19a-8e18de248222
+
+
+
 <img width="2376" height="1080" alt="IMG_20260917_153302" src="https://github.com/user-attachments/assets/a2a33a8c-9df5-4d91-a169-62ca48370bec" />
 
 
