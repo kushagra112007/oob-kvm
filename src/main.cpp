@@ -6,63 +6,73 @@
 #include <IRutils.h>
 
 // --- WI-FI CREDENTIALS ---
-const char* ssid     = "YOUR_WIFI_SSID";     // <--- Put your Wi-Fi SSID here
-const char* password = "YOUR_WIFI_PASSWORD"; // <--- Put your Wi-Fi Password here
+// REPLACE THESE PLACEHOLDERS BEFORE COMPILING
+const char* ssid     = "YOUR_WIFI_SSID";
+const char* password = "YOUR_WIFI_PASSWORD";
 
-// --- PIN DEFINITIONS (MATCHING YOUR HARDWARE WIRING) ---
-const int SERVO_PIN = D4; // Yellow/Orange wire on D4
+// --- PIN & PULSE DEFINITIONS ---
+const int SERVO_PIN = D4; // Yellow/Orange signal wire on D4
 const int IR_PIN    = D2; // IR Sensor signal wire on D2
+
+// SG90 Extended Pulse Bounds (Microseconds)
+const int MIN_PULSE = 500;  // Forces true 0 deg reach
+const int MAX_PULSE = 2400; // Forces true 180 deg reach
 
 // --- IR REMOTE CODES ---
 const uint32_t BTN_DOWN = 0xFF4AB5; // DOWN -> 5-Second Power Tap
-const uint32_t BTN_UP   = 0xFF18E7; // UP   -> Manual Emergency Release to 0 deg
+const uint32_t BTN_UP   = 0xFF18E7; // UP   -> Manual Emergency Release to 180 deg
 
 // --- SERVO ANGLES & TIMINGS ---
-const int ANGLE_UP    = 0;   // Rest position
-const int ANGLE_DOWN  = 130; // Press position
+const int ANGLE_UP   = 180; // Rest position (9 o'clock)
+const int ANGLE_DOWN = 110; // Press position (6 o'clock onto power button)
 
-const int WAKE_DURATION      = 1500;  // 1.5 seconds
-const int POWER_ON_DURATION  = 5000;  // 5 seconds
-const int PANIC_DURATION     = 15000; // 15 seconds
+const int WAKE_DURATION     = 1500;  // 1.5 seconds
+const int POWER_ON_DURATION = 5000;  // 5 seconds
+const int PANIC_DURATION    = 15000; // 15 seconds
 
 Servo myServo;
 IRrecv irrecv(IR_PIN);
 decode_results results;
 ESP8266WebServer server(80);
 
-// Helper function to handle non-blocking button press
+// Helper function to handle non-blocking button press with explicit pulse widths
 void pressPowerButton(int durationMs, String label) {
   Serial.print("Executing: ");
   Serial.println(label);
 
+  // Attach using explicit min/max pulse limits
+  myServo.attach(SERVO_PIN, MIN_PULSE, MAX_PULSE);
   myServo.write(ANGLE_DOWN);
   
   unsigned long start = millis();
   while (millis() - start < durationMs) {
-    yield(); // Keeps Wi-Fi and Watchdog from crashing
+    server.handleClient(); // Keep server listening during holds
+    yield();               // Keep Wi-Fi & Watchdog fed to prevent WDT resets
     delay(10);
   }
 
   myServo.write(ANGLE_UP);
-  Serial.println("Action Complete: Servo released.");
+  delay(400);              // Give motor physical time to reach 180 deg
+  myServo.detach();        // Stop active PWM pulse to eliminate idle chatter/heat
+  Serial.println("Action Complete: Servo returned to 180 deg and detached.");
 }
 
 // --- HTTP ROUTE HANDLERS ---
 void handleRoot() {
-  String html = "<html><head><title>FA507UV Power Node</title>";
+  String html = "<html><head><title>OOB Power Node Control</title>";
   html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
-  html += "<style>body{font-family:Arial; text-align:center; margin-top:40px;}";
+  html += "<style>body{font-family:Arial,sans-serif; text-align:center; margin-top:40px; background:#121212; color:#eee;}";
   html += ".btn{display:inline-block; width:80%; max-width:300px; padding:15px; margin:10px; font-size:18px; color:white; border:none; border-radius:8px; text-decoration:none; cursor:pointer;}";
   html += ".wake{background-color:#2196F3;}";
   html += ".power{background-color:#4CAF50;}";
   html += ".panic{background-color:#f44336;}";
   html += ".release{background-color:#757575;}";
   html += "</style></head><body>";
-  html += "<h2>FA507UV Power Control</h2>";
+  html += "<h2>Out-of-Band Power Control</h2>";
   html += "<p><a href='/wake'><button class='btn wake'>Wake Display (1.5s)</button></a></p>";
   html += "<p><a href='/power'><button class='btn power'>Power On (5s)</button></a></p>";
   html += "<p><a href='/panic'><button class='btn panic'>Kernel Panic Reset (15s)</button></a></p>";
-  html += "<p><a href='/release'><button class='btn release'>Force Release (0 deg)</button></a></p>";
+  html += "<p><a href='/release'><button class='btn release'>Force Release (180 deg)</button></a></p>";
   html += "</body></html>";
   
   server.send(200, "text/html", html);
@@ -84,17 +94,22 @@ void handlePanic() {
 }
 
 void handleRelease() {
+  myServo.attach(SERVO_PIN, MIN_PULSE, MAX_PULSE);
   myServo.write(ANGLE_UP);
-  server.send(200, "text/plain", "Emergency Release: Moved back to 0 degrees.");
+  delay(400);
+  myServo.detach();
+  server.send(200, "text/plain", "Emergency Release: Moved back to 180 degrees.");
 }
 
 void setup() {
   Serial.begin(115200);
   delay(500);
 
-  // Attach Servo to D4
-  myServo.attach(SERVO_PIN);
+  // Initial position alignment and release
+  myServo.attach(SERVO_PIN, MIN_PULSE, MAX_PULSE);
   myServo.write(ANGLE_UP);
+  delay(400);
+  myServo.detach();
 
   // Start IR Receiver on D2
   irrecv.enableIRIn();
@@ -140,8 +155,11 @@ void loop() {
         pressPowerButton(POWER_ON_DURATION, "IR Remote 5s Press");
       } 
       else if (code == BTN_UP) {
+        myServo.attach(SERVO_PIN, MIN_PULSE, MAX_PULSE);
         myServo.write(ANGLE_UP);
-        Serial.println("IR Remote Action: Moved UP to 0 deg");
+        delay(400);
+        myServo.detach();
+        Serial.println("IR Remote Action: Moved UP to 180 deg");
       }
     }
     
